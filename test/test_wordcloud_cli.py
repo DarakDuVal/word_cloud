@@ -1,12 +1,14 @@
 import argparse
 import os
 import subprocess
+import sys
 from collections import namedtuple
+import contextlib
 
 import wordcloud as wc
 from wordcloud import wordcloud_cli as cli
 
-from mock import patch
+from unittest.mock import patch
 import pytest
 
 import matplotlib
@@ -140,7 +142,7 @@ def test_unicode_with_stopwords():
     assert u'\u304D' in args['stopwords']
 
 
-def test_cli_writes_image(tmpdir, tmp_text_file):
+def test_cli_writes_to_imagefile(tmpdir, tmp_text_file):
     # ensure writing works with all python versions
     tmp_image_file = tmpdir.join("word_cloud.png")
 
@@ -149,7 +151,22 @@ def test_cli_writes_image(tmpdir, tmp_text_file):
     args, text, image_file = cli.parse_args(['--text', str(tmp_text_file), '--imagefile', str(tmp_image_file)])
     cli.main(args, text, image_file)
 
-    # expecting image to be written
+    # expecting image to be written to imagefile
+    assert tmp_image_file.size() > 0
+
+
+# capsysbinary should be used here, but it's not supported in python 2.
+def test_cli_writes_to_stdout(tmpdir, tmp_text_file):
+    # ensure writing works with all python versions
+    tmp_image_file = tmpdir.join("word_cloud.png")
+
+    tmp_text_file.write(b'some text')
+
+    with contextlib.redirect_stdout(tmp_image_file.open('w+')):
+        args, text, image_file = cli.parse_args(['--text', str(tmp_text_file)])
+        cli.main(args, text, image_file)
+
+    # expecting image to be written to stdout
     assert tmp_image_file.size() > 0
 
 
@@ -167,8 +184,8 @@ def test_cli_regexp_invalid(tmp_text_file, capsys):
 
 @pytest.mark.parametrize("command,expected_output, expected_exit_code", [
     ("wordcloud_cli --help", "usage: wordcloud_cli", 0),
-    ("python -m wordcloud --help", "usage: __main__", 0),
-    ("python %s/../wordcloud/wordcloud_cli.py --help" % os.path.dirname(__file__), "To execute the CLI", 1),
+    ("%s -m wordcloud --help" % sys.executable, "usage: __main__", 0),
+    ("%s %s/../wordcloud/wordcloud_cli.py --help" % (sys.executable, os.path.dirname(__file__)), "To execute the CLI", 1),
 ])
 def test_cli_as_executable(command, expected_output, expected_exit_code, tmpdir, capfd, no_cover_compat):
 

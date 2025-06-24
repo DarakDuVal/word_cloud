@@ -54,14 +54,15 @@ class FileType(object):
             if 'r' in self._mode:
                 return sys.stdin
             elif 'w' in self._mode:
-                return sys.stdout
+                return sys.stdout.buffer if 'b' in self._mode else sys.stdout
             else:
                 msg = 'argument "-" with mode %r' % self._mode
                 raise ValueError(msg)
 
         # all other arguments are used as file names
         try:
-            return io.open(string, self._mode, self._bufsize, encoding="UTF-8")
+            encoding = None if 'b' in self._mode else "UTF-8"
+            return io.open(string, self._mode, self._bufsize, encoding=encoding)
         except IOError as e:
             message = "can't open '%s': %s"
             raise argparse.ArgumentTypeError(message % (string, e))
@@ -107,7 +108,7 @@ def make_parser():
         help='specify file of stopwords (containing one word per line)'
              ' to remove from the given text after parsing')
     parser.add_argument(
-        '--imagefile', metavar='file', type=argparse.FileType('wb'),
+        '--imagefile', metavar='file', type=FileType('wb'),
         default='-',
         help='file the completed PNG image should be written to'
              ' (default: stdout)')
@@ -181,7 +182,7 @@ def make_parser():
     parser.add_argument(
         '--mode',
         type=str, default='RGB', metavar='mode',
-        help='use RGB or RGBA for trasparent background')
+        help='use RGB or RGBA for transparent background')
     parser.add_argument(
         '--max_words',
         type=int, default=200, metavar='N',
@@ -222,6 +223,8 @@ def parse_args(arguments):
     # prog = 'python wordcloud_cli.py'
     parser = make_parser()
     args = parser.parse_args(arguments)
+    if args.background_color == 'None':
+        args.background_color = None
 
     if args.colormask and args.color:
         raise ValueError('specify either a color mask or a color function')

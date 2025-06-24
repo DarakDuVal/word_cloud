@@ -103,7 +103,7 @@ class colormap_color_func(object):
     """
     def __init__(self, colormap):
         import matplotlib.pyplot as plt
-        self.colormap = plt.cm.get_cmap(colormap)
+        self.colormap = plt.get_cmap(colormap)
 
     def __call__(self, word, font_size, position, orientation,
                  random_state=None, **kwargs):
@@ -290,13 +290,15 @@ class WordCloud(object):
         .. versionchanged: 2.0
             ``words_`` is now a dictionary
 
-    ``layout_`` : list of tuples (string, int, (int, int), int, color))
-        Encodes the fitted word cloud. Encodes for each word the string, font
-        size, position, orientation and color.
+    ``layout_`` : list of tuples ((string, float), int, (int, int), int, color))
+        Encodes the fitted word cloud. For each word, it encodes the string,
+        normalized frequency, font size, position, orientation, and color.
+        The frequencies are normalized by the most commonly occurring word.
+        The color is in the format of 'rgb(R, G, B).'
 
     Notes
     -----
-    Larger canvases with make the code significantly slower. If you need a
+    Larger canvases make the code significantly slower. If you need a
     large word cloud, try a lower canvas size, and set the scale parameter.
 
     The algorithm might give more weight to the ranking of the words
@@ -364,6 +366,11 @@ class WordCloud(object):
         self.include_numbers = include_numbers
         self.min_word_length = min_word_length
         self.collocation_threshold = collocation_threshold
+
+        # Override the width and height if there is a mask
+        if mask is not None:
+            self.width = mask.shape[1]
+            self.height = mask.shape[0]
 
     def fit_words(self, frequencies):
         """Create a word_cloud from words and frequencies.
@@ -492,19 +499,22 @@ class WordCloud(object):
                 orientation = Image.ROTATE_90
             tried_other_orientation = False
             while True:
+                if font_size < self.min_font_size:
+                    # font-size went too small
+                    break
                 # try to find a position
                 font = ImageFont.truetype(self.font_path, font_size)
                 # transpose font optionally
                 transposed_font = ImageFont.TransposedFont(
                     font, orientation=orientation)
                 # get size of resulting text
-                box_size = draw.textsize(word, font=transposed_font)
+                box_size = draw.textbbox((0, 0), word, font=transposed_font, anchor="lt")
                 # find possible places using integral image:
-                result = occupancy.sample_position(box_size[1] + self.margin,
-                                                   box_size[0] + self.margin,
+                result = occupancy.sample_position(box_size[3] + self.margin,
+                                                   box_size[2] + self.margin,
                                                    random_state)
-                if result is not None or font_size < self.min_font_size:
-                    # either we found a place or font-size went too small
+                if result is not None:
+                    # Found a place
                     break
                 # if we didn't find a place, make font smaller
                 # but first try to rotate!
@@ -569,7 +579,8 @@ class WordCloud(object):
 
         flags = (re.UNICODE if sys.version < '3' and type(text) is unicode  # noqa: F821
                  else 0)
-        regexp = self.regexp if self.regexp is not None else r"\w[\w']+"
+        pattern = r"\w[\w']*" if self.min_word_length <= 1 else r"\w[\w']+"
+        regexp = self.regexp if self.regexp is not None else pattern
 
         words = re.findall(regexp, text, flags)
         # remove 's
@@ -737,9 +748,6 @@ class WordCloud(object):
             Word cloud image as numpy matrix.
         """
         return self.to_array()
-
-    def to_html(self):
-        raise NotImplementedError("FIXME!!!")
 
     def to_svg(self, embed_font=False, optimize_embedded_font=True, embed_image=False):
         """Export to SVG.
